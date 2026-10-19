@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html, body, #root { height: 100%; }
+body {
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(1200px 500px at 85% -10%, rgba(37,99,235,0.10), transparent 60%),
+    radial-gradient(900px 420px at -10% 0%, rgba(8,145,178,0.08), transparent 55%),
+    #e9eef5;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============ BOUTONS UNIFORMISÉS + HOVER (partout) ============ */
+.btn-uniform {
+  position: relative;
+  overflow: hidden;
+  transition: transform .18s cubic-bezier(.34,1.56,.64,1), box-shadow .22s ease, background-color .2s ease, border-color .2s ease, color .2s ease, filter .2s ease;
+  will-change: transform;
+  cursor: pointer;
+  user-select: none;
+}
+.btn-uniform::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.35) 48%, transparent 62%);
+  transform: translateX(-120%);
+  transition: transform .55s ease;
+  pointer-events: none;
+}
+.btn-uniform:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 10px 24px -6px rgba(15,35,70,.28);
+  filter: brightness(1.04);
+}
+.btn-uniform:hover:not(:disabled)::after { transform: translateX(120%); }
+.btn-uniform:active:not(:disabled) { transform: translateY(0) scale(.97); box-shadow: 0 3px 8px rgba(15,35,70,.18); }
+.btn-uniform:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.btn-icon:hover:not(:disabled) { transform: translateY(-2px) rotate(-3deg) scale(1.08); }
+.btn-icon:active:not(:disabled) { transform: scale(.92); }
+
+/* Toute balise button hérite d'un hover doux si non stylée */
+button { transition: transform .16s ease, box-shadow .2s ease, background-color .18s ease, color .18s ease, border-color .18s ease, filter .18s ease; }
+button:hover:not(:disabled) { filter: brightness(1.03); }
+select, input, textarea { transition: border-color .18s ease, box-shadow .2s ease, background-color .18s ease; }
+select:hover, input:hover:not([readonly]), textarea:hover { border-color: #93c5fd; }
+
+/* ============ CARTES & TABLEAUX ============ */
+.card-uniform { transition: transform .22s ease, box-shadow .25s ease, border-color .2s ease; }
+.card-uniform:hover { box-shadow: 0 12px 32px -10px rgba(15,35,70,.14); border-color: #cbd8ea; }
+.app-table { border-collapse: separate; border-spacing: 0; }
+.app-table thead th { position: sticky; top: 0; z-index: 2; }
+.app-table tbody tr { transition: background-color .15s ease, transform .15s ease; }
+.app-table tbody tr:hover { box-shadow: inset 3px 0 0 rgba(37,99,235,.65); }
+.app-table tbody td { vertical-align: middle; }
+
+/* ============ ANIMATIONS ============ */
+@keyframes toastIn { from { opacity: 0; transform: translateX(24px) scale(.96); } to { opacity: 1; transform: translateX(0) scale(1); } }
+.toast-in { animation: toastIn .32s cubic-bezier(.21,1.02,.55,1.15) both; }
+@keyframes modalIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.modal-in { animation: modalIn .28s cubic-bezier(.21,1.02,.55,1.1) both; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { animation: fadeUp .45s ease both; }
+@keyframes softPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(244,63,94,.45); } 50% { box-shadow: 0 0 0 7px rgba(244,63,94,0); } }
+.pulse-danger { animation: softPulse 1.8s ease infinite; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* scrollbars */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #b8c4d6; border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #7d93b5; border: 2px solid transparent; background-clip: padding-box; }
+aside ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border: 2px solid transparent; background-clip: padding-box; }
+
+@media print {
+  aside, header, footer, button { display: none !important; }
+  .ml-\[248px\] { margin-left: 0 !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  body { background: white !important; }
+  #receipt-print { border: 2px solid #000 !important; }
+}
