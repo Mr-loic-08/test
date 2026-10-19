@@ -3,6 +3,7 @@ import type { AppState, PaymentAllocation, Payment, RentSchedule, WaterInvoice, 
 import { seedState } from '../data/seed';
 import { getStatus, remaining, uid } from '../utils/helpers';
 import { setSoundEnabled, setSoundVolume, playSuccess } from '../utils/sound';
+import { buildMutationEntries, mergeAuditEntries, newAuditEntry, pruneAudit, type AuditInput } from '../utils/audit';
 
 const STORAGE_KEY = 'gestion_locative_v1';
 export const AUTOBACKUP_KEY = 'gestion_locative_autobackup_latest';
@@ -17,7 +18,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
 };
 
 function withDefaults(s: AppState): AppState {
-  return { ...seedState, ...s, settings: { ...DEFAULT_SETTINGS, ...(seedState.settings as AppSettings), ...(s.settings || {}) } as AppSettings };
+  return {
+    ...seedState, ...s,
+    settings: { ...DEFAULT_SETTINGS, ...(seedState.settings as AppSettings), ...(s.settings || {}) } as AppSettings,
+    auditLog: pruneAudit(s.auditLog),
+  };
 }
 function loadState(): AppState {
   try {
@@ -38,6 +43,7 @@ interface ComputedRent extends RentSchedule { paid: number; rest: number; status
 interface ComputedWater extends WaterInvoice { paid: number; rest: number; status: PaymentStatus; tenantId?: string; propertyId?: string; }
 interface StoreCtx {
   state: AppState; update: (fn: (s: AppState) => AppState) => void; reset: () => void; importState: (s: AppState) => void;
+  logAction: (entry: AuditInput) => void;
   rents: ComputedRent[]; waters: ComputedWater[]; rentPaidMap: Map<string, number>; waterPaidMap: Map<string, number>;
   addPaymentWithAllocations: (p: Omit<Payment, 'id' | 'createdAt' | 'reference'> & { allocations: { rentScheduleId?: string; waterInvoiceId?: string; allocatedAmount: number }[] }) => Payment;
   tenantRentStatus: (tenantId: string) => { due: number; paid: number; rest: number; status: PaymentStatus; countPaye: number; countInc: number; countNon: number };
@@ -59,6 +65,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setSoundEnabled(state.settings.soundEnabled !== false); setSoundVolume(state.settings.soundVolume ?? 0.6);
   }, [state]);
 
+  // Expired journal entries are removed even if no business data changes.
+  useEffect(() => {
+    const timer = setInterval(() => setState(prev => {
+      const kept = pruneAudit(prev.auditLog);
+      return kept.length === prev.auditLog.length ? prev : { ...prev, auditLog: kept };
+    }), 60 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const doAutoBackup = (reason = 'auto') => {
     try {
       const payload = { app: 'GestionLocative', kind: 'autobackup', reason, exportedAt: new Date().toISOString(), data: stateRef.current };
@@ -70,9 +85,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       lastAutoRef.current = Date.now();
       // met à jour les métadonnées sans boucle (valeurs identiques ignorées par l'intervalle)
       setState(prev => ({ ...prev, settings: { ...prev.settings, lastAutoBackup: payload.exportedAt, autoBackupCount: (prev.settings.autoBackupCount || 0) + 1 } }));
-    } catch {}
+      return true;
+    } catch { return false; }
   };
-  const triggerAutoBackup = (reason?: string) => doAutoBackup(reason || 'manuel');
+  const triggerAutoBackup = (reason?: string) => {
+    if (doAutoBackup(reason || 'manuel')) {
+      logAction({ action: 'sauvegarde', module: 'Sauvegarde', target: 'Instantané local', details: 'Sauvegarde locale déclenchée manuellement.' });
+    }
+  };
 
   // Boucle sauvegarde automatique
   useEffect(() => {
@@ -91,9 +111,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener('beforeunload', onBefore); return () => window.removeEventListener('beforeunload', onBefore);
   }, []);
 
-  const update = (fn: (s: AppState) => AppState) => setState(prev => fn(structuredClone(prev)));
-  const reset = () => setState(structuredClone(seedState));
-  const importState = (s: AppState) => setState(withDefaults(s));
+  const update = (fn: (s: AppState) => AppState) => setState(prev => {
+    const next = fn(structuredClone(prev));
+    // The journal cannot be edited through a regular business update.
+    next.auditLog = pruneAudit([...prev.auditLog, ...buildMutationEntries(prev, next)]);
+    return next;
+  });
+
+  const logAction = (entry: AuditInput) => setState(prev => ({
+    ...prev,
+    auditLog: pruneAudit([...prev.auditLog, newAuditEntry(entry, prev.settings.landlordName)]),
+  }));
+
+  const reset = () => setState(prev => {
+    const next = structuredClone(seedState);
+    next.auditLog = pruneAudit([...prev.auditLog, newAuditEntry({
+      action: 'restauration', module: 'Sauvegarde', target: 'Données de démonstration',
+      details: 'Réinitialisation confirmée. Les entrées du journal existantes ont été conservées.',
+    }, prev.settings.landlordName)]);
+    return next;
+  });
+  const importState = (s: AppState) => setState(prev => {
+    const next = withDefaults(s);
+    next.auditLog = pruneAudit([...mergeAuditEntries(prev.auditLog, next.auditLog), newAuditEntry({
+      action: 'restauration', module: 'Sauvegarde', target: 'Données restaurées',
+      details: 'Restauration confirmée. Les actions encore dans la période de conservation ont été conservées.',
+    }, prev.settings.landlordName)]);
+    return next;
+  });
 
   const { rents, waters, rentPaidMap, waterPaidMap } = useMemo(() => {
     const rentPaidMap = new Map<string, number>(); const waterPaidMap = new Map<string, number>();
@@ -105,7 +150,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const rents = state.rentSchedules.map(r => { const paid = rentPaidMap.get(r.id) || 0; const c = contractById.get(r.contractId); return { ...r, paid, rest: remaining(r.amountDue, paid), status: getStatus(r.amountDue, paid), tenantId: c?.tenantId, propertyId: c?.propertyId }; }).sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month);
     const waters = state.waterInvoices.map(w => { const paid = waterPaidMap.get(w.id) || 0; const c = contractById.get(w.contractId); return { ...w, paid, rest: remaining(w.amountDue, paid), status: getStatus(w.amountDue, paid), tenantId: c?.tenantId, propertyId: c?.propertyId }; }).sort((a, b) => a.periodYear !== b.periodYear ? b.periodYear - a.periodYear : b.periodMonth - a.periodMonth);
     return { rents, waters, rentPaidMap, waterPaidMap };
-  }, [state]);
+  }, [state.allocations, state.contracts, state.rentSchedules, state.waterInvoices]);
 
   const tenantRentStatus = (tenantId: string) => {
     const contracts = state.contracts.filter(c => c.tenantId === tenantId).map(c => c.id);
@@ -133,13 +178,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const reference = `PAY-${year}-${String(count).padStart(3, '0')}`;
     const payment: Payment = { id: uid('pay'), reference, tenantId: input.tenantId, contractId: input.contractId, propertyId: input.propertyId, paymentDate: input.paymentDate, amount: input.amount, method: input.method, kind: input.kind, comment: input.comment, createdAt: new Date().toISOString() };
     const allocs: PaymentAllocation[] = input.allocations.filter(a => a.allocatedAmount > 0).map(a => ({ id: uid('al'), paymentId: payment.id, rentScheduleId: a.rentScheduleId, waterInvoiceId: a.waterInvoiceId, allocatedAmount: a.allocatedAmount, createdAt: new Date().toISOString() }));
-    setState(prev => { const next = structuredClone(prev); next.payments.push(payment); next.allocations.push(...allocs); next.documents.push({ id: uid('doc'), name: `Recu_${reference}.pdf`, type: 'recu', tenantId: payment.tenantId, propertyId: payment.propertyId, contractId: payment.contractId, paymentId: payment.id, filePath: `C:\\GestionLocative\\recus\\Recu_${reference}.pdf`, size: '95 Ko', createdAt: new Date().toISOString() }); return next; });
+    setState(prev => {
+      const next = structuredClone(prev);
+      next.payments.push(payment);
+      next.allocations.push(...allocs);
+      next.documents.push({ id: uid('doc'), name: `Recu_${reference}.pdf`, type: 'recu', tenantId: payment.tenantId, propertyId: payment.propertyId, contractId: payment.contractId, paymentId: payment.id, filePath: `C:\\GestionLocative\\recus\\Recu_${reference}.pdf`, size: '95 Ko', createdAt: new Date().toISOString() });
+      next.auditLog = pruneAudit([...prev.auditLog, ...buildMutationEntries(prev, next)]);
+      return next;
+    });
     if (stateRef.current.settings.soundEnabled && stateRef.current.settings.soundOnPayment) playSuccess();
     setTimeout(() => doAutoBackup('apres-paiement'), 400);
     return payment;
   };
 
-  const value: StoreCtx = { state, update, reset, importState, rents, waters, rentPaidMap, waterPaidMap, addPaymentWithAllocations, tenantRentStatus, tenantWaterStatus, contractRents, contractWaters, lastSavedAt, triggerAutoBackup };
+  const value: StoreCtx = { state, update, reset, importState, logAction, rents, waters, rentPaidMap, waterPaidMap, addPaymentWithAllocations, tenantRentStatus, tenantWaterStatus, contractRents, contractWaters, lastSavedAt, triggerAutoBackup };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 export function useStore(): StoreCtx { const ctx = useContext(Ctx); if (!ctx) throw new Error('useStore must be used within StoreProvider'); return ctx; }

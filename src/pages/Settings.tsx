@@ -5,11 +5,12 @@ import { useToast } from '../components/notifications';
 import { useStore } from '../store/store';
 import { Card, CardHeader, Btn, Field, inputCls } from '../components/ui';
 import { formatMoney, formatDate, uid } from '../utils/helpers';
+import MeterReadingSettings from '../components/MeterReadingSettings';
 
-export default function Settings() {
+export default function Settings({ onOpenHistory, initialTab = 'bailleur' }: { onOpenHistory?: () => void; initialTab?: 'bailleur' | 'eau' }) {
   const { state, update, triggerAutoBackup } = useStore();
   const { push } = useToast();
-  const [tab, setTab] = useState<'bailleur' | 'eau' | 'recus' | 'general' | 'sons' | 'alertes'>('bailleur');
+  const [tab, setTab] = useState<'bailleur' | 'eau' | 'recus' | 'general' | 'sons' | 'alertes'>(initialTab);
   const [s, setS] = useState(state.settings);
   const [newTariff, setNewTariff] = useState('');
   const [tariffDate, setTariffDate] = useState(new Date().toISOString().slice(0, 10));
@@ -19,7 +20,20 @@ export default function Settings() {
   const currentTariff = [...state.waterTariffs].sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
 
   const saveSettings = () => {
-    update(st => { st.settings = { ...s }; return st; });
+    if (!Number.isInteger(s.waterReadingDay) || s.waterReadingDay < 1 || s.waterReadingDay > 28) {
+      setMsg('Le jour général du relevé doit être compris entre 1 et 28.');
+      return;
+    }
+    update(st => {
+      st.settings = {
+        ...st.settings, ...s,
+        // These system timestamps/counters must not be overwritten by an old form.
+        lastBackup: st.settings.lastBackup,
+        lastAutoBackup: st.settings.lastAutoBackup,
+        autoBackupCount: st.settings.autoBackupCount,
+      };
+      return st;
+    });
     setSoundEnabled(s.soundEnabled); setSoundVolume(s.soundVolume);
     setMsg('Paramètres enregistrés et appliqués immédiatement.');
     push({severity:'success', title:'Paramètres enregistrés', message:'Sons, alertes et sauvegarde auto mis à jour.'});
@@ -45,7 +59,7 @@ export default function Settings() {
       <Card>
         <div className="p-3">
           <p className="px-2 pb-2 text-[12px] font-bold uppercase text-slate-500">Paramètres</p>
-          {([['bailleur', 'Bailleur', <User key="u" size={16} />], ['eau', 'Tarification eau', <Droplets key="d" size={16} />], ['sons', 'Sons & notifications', <Volume2 key="s" size={16} />], ['alertes', 'Alertes & sauvegarde auto', <BellRing key="a" size={16} />], ['recus', 'Reçus', <Receipt key="r" size={16} />], ['general', 'Général', <Save key="g" size={16} />]] as const).map(([v, l, icon]) => (
+          {([['bailleur', 'Bailleur', <User key="u" size={16} />], ['eau', 'Eau / Dates de relevé', <Droplets key="d" size={16} />], ['sons', 'Sons & notifications', <Volume2 key="s" size={16} />], ['alertes', 'Alertes & sauvegarde auto', <BellRing key="a" size={16} />], ['recus', 'Reçus', <Receipt key="r" size={16} />], ['general', 'Général', <Save key="g" size={16} />]] as const).map(([v, l, icon]) => (
             <button key={v} onClick={() => setTab(v)} className={`btn-uniform flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-bold ${tab === v ? 'bg-gradient-to-r from-blue-500 to-blue-700 text-white shadow-md' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'}`}>{icon}{l}</button>
           ))}
         </div>
@@ -69,6 +83,7 @@ export default function Settings() {
 
         {tab === 'eau' && (
           <>
+            <MeterReadingSettings onGlobalSaved={day => setS(previous => ({ ...previous, waterReadingDay: day }))} />
             <Card>
               <CardHeader title="Tarification de l'eau" subtitle="Prix unitaire du m³ — historisé, jamais recalculé sur l'ancien" />
               <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
@@ -148,7 +163,7 @@ export default function Settings() {
               <CardHeader theme="teal" title="Date de prélèvement compteur d'eau" subtitle="Rappel mensuel par compteur" action={<Btn variant="teal" onClick={saveSettings}><Gauge size={14}/> Appliquer</Btn>} />
               <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
                 <Field label="Jour du prélèvement (chaque mois)"><input type="number" min={1} max={28} className={inputCls} value={s.waterReadingDay} onChange={e=>setS({...s,waterReadingDay:Number(e.target.value)})}/></Field>
-                <div className="rounded-2xl bg-cyan-50 p-4 text-[12.5px] text-cyan-900"><b>Exemple :</b> jour = {s.waterReadingDay} → chaque compteur sans relevé du mois est signalé 3 jours avant, le jour J et en retard ensuite (carte compteur + cloche + son eau).</div>
+                <div className="rounded-2xl bg-cyan-50 p-4 text-[12.5px] text-cyan-900"><b>Exemple :</b> jour = {s.waterReadingDay} → chaque compteur sans relevé du mois est signalé 3 jours avant, le jour J et en retard ensuite. Pour ajuster la date de chaque compteur ou décaler un seul relevé, ouvrez <b>Eau / Dates de relevé</b>.</div>
               </div>
             </Card>
             <Card>
@@ -158,6 +173,10 @@ export default function Settings() {
                 <Field label="Intervalle (minutes)"><input type="number" min={1} max={120} className={inputCls} value={s.autoBackupIntervalMinutes} onChange={e=>setS({...s,autoBackupIntervalMinutes:Number(e.target.value)})}/></Field>
                 <div className="rounded-2xl bg-slate-50 p-4 text-[12.5px] md:col-span-3"><p><b>Dernière sauvegarde auto :</b> {s.lastAutoBackup ? new Date(s.lastAutoBackup).toLocaleString('fr-FR') : '—'} • <b>Nombre :</b> {s.autoBackupCount||0} • <b>Dossier :</b> {s.backupFolder||'—'}</p><p className="mt-1 text-slate-500">L'instantané automatique se restaure en 1 clic depuis l'écran Sauvegarde.</p></div>
               </div>
+            </Card>
+            <Card>
+              <CardHeader theme="slate" title="Journal d'activité" subtitle="Enregistrements, modifications, paiements et restaurations, conservés trois mois" action={onOpenHistory && <Btn variant="secondary" onClick={onOpenHistory}><History size={14} /> Voir l'historique</Btn>} />
+              <p className="px-5 py-4 text-[12.5px] text-slate-600">Aucune suppression manuelle du journal n'est proposée. Les entrées datant de plus de trois mois sont retirées automatiquement de l'application.</p>
             </Card>
           </div>
         )}
@@ -188,7 +207,7 @@ export default function Settings() {
               <Field label="Dernière sauvegarde"><input className={`${inputCls} bg-slate-50`} readOnly value={s.lastBackup ? formatDate(s.lastBackup) : 'Jamais'} /></Field>
               <div className="md:col-span-2 rounded-xl bg-slate-50 p-4 text-[12.5px] text-slate-600">
                 <p className="font-extrabold text-slate-800">À propos de l'application desktop</p>
-                <p className="mt-1">Gestion Locative v1.0 — React + Vite + TailwindCSS • Electron (desktop) • SQLite (base locale). Fonctionne hors ligne, sans serveur distant ni Internet pour l'usage courant. Sauvegardez régulièrement vos données.</p>
+                <p className="mt-1">Gestion Locative — React + Vite + TailwindCSS. Cette version utilise le stockage local du navigateur et fonctionne hors ligne sans serveur distant. La couche Electron/SQLite décrite dans le cahier des charges n'est pas encore raccordée. Exportez régulièrement une sauvegarde JSON.</p>
               </div>
             </div>
           </Card>

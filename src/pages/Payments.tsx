@@ -8,7 +8,7 @@ import { useToast } from '../components/notifications';
 import type { PaymentMethod } from '../types';
 
 export default function Payments({ search }: { search: string }) {
-  const { state, update, rents, waters, addPaymentWithAllocations } = useStore();
+  const { state, update, logAction, rents, waters, addPaymentWithAllocations } = useStore();
   const { push } = useToast();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -296,7 +296,7 @@ export default function Payments({ search }: { search: string }) {
               <p className="mt-3 text-center text-[11px] italic text-slate-400">{state.settings.receiptFooter}</p>
               <div className="mt-4 flex justify-between text-[12px]"><span>Signature bailleur</span><span>Signature locataire</span></div>
             </div>
-            <div className="mt-4 flex justify-end gap-2 print:hidden"><Btn variant="secondary" onClick={() => setReceiptId(null)}>Fermer</Btn><Btn onClick={() => window.print()}><Printer size={14} /> Imprimer / PDF</Btn></div>
+            <div className="mt-4 flex justify-end gap-2 print:hidden"><Btn variant="secondary" onClick={() => setReceiptId(null)}>Fermer</Btn><Btn onClick={() => { logAction({ action: 'export', module: 'Paiements', target: `Reçu ${receipt.reference}`, details: 'Impression ou enregistrement PDF du reçu demandé.' }); window.print(); }}><Printer size={14} /> Imprimer / PDF</Btn></div>
           </div>
         )}
       </Modal>

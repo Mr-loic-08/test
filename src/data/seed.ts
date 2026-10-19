@@ -43,7 +43,7 @@ export const seedState: AppState = {
   waterMeters: [
     { id: 'wm_a01', propertyId: 'prop_a01', meterNumber: 'EA-001', installationDate: '2024-01-15', status: 'actif', createdAt: '2024-01-15' },
     { id: 'wm_a02', propertyId: 'prop_a02', meterNumber: 'EA-002', installationDate: '2024-01-15', status: 'actif', createdAt: '2024-01-15' },
-    { id: 'wm_a03', propertyId: 'prop_a03', meterNumber: 'EA-003', installationDate: '2024-01-15', status: 'actif', createdAt: '2024-01-15' },
+    { id: 'wm_a03', propertyId: 'prop_a03', meterNumber: 'EA-003', installationDate: '2024-01-15', status: 'actif', readingDay: 22, createdAt: '2024-01-15' },
     { id: 'wm_b01', propertyId: 'prop_b01', meterNumber: 'EA-004', installationDate: '2024-02-01', status: 'actif', createdAt: '2024-02-01' },
     { id: 'wm_b02', propertyId: 'prop_b02', meterNumber: 'EA-005', installationDate: '2024-02-01', status: 'actif', createdAt: '2024-02-01' },
     { id: 'wm_c01', propertyId: 'prop_c01', meterNumber: 'EA-006', installationDate: '2024-03-01', status: 'actif', createdAt: '2024-03-01' },
@@ -116,6 +116,7 @@ export const seedState: AppState = {
     { id: 'doc_4', name: 'Quittance_Sept_Jean.pdf', type: 'recu', tenantId: 'ten_jean', paymentId: 'pay_006', filePath: 'C:\\GestionLocative\\recus\\Quittance_Sept.pdf', size: '95 Ko', createdAt: '2026-09-05' },
     { id: 'doc_5', name: 'Contrat_Thomas_Bernard.pdf', type: 'contrat', tenantId: 'ten_thomas', contractId: 'ct_003', filePath: 'C:\\GestionLocative\\docs\\Contrat_Thomas.pdf', size: '250 Ko', createdAt: '2025-01-01' },
   ],
+  auditLog: [],
   settings: {
     landlordName: 'Bailleur Démo',
     company: 'SCI Les Palmiers',

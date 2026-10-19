@@ -77,7 +77,7 @@ export default function Dashboard({ go, alerts = [] }: { go: (p: PageKey) => voi
           <div className="max-w-[620px]">
             <p className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1 text-[12px] font-bold text-blue-100 ring-1 ring-white/20 backdrop-blur"><ShieldCheck size={13} className="text-emerald-300" /> Sauvegarde auto {state.settings.autoBackupEnabled ? `active • toutes les ${state.settings.autoBackupIntervalMinutes} min` : 'désactivée'} • Sons {state.settings.soundEnabled ? 'ON' : 'OFF'}</p>
             <h2 className="mt-3 text-[24px] font-extrabold leading-tight tracking-tight text-white drop-shadow md:text-[27px]">Bonjour {state.settings.landlordName}, votre résidence est sous contrôle.</h2>
-            <p className="mt-1.5 text-[13.5px] text-blue-100">{occ} logement(s) occupé(s) sur {totalProps} • <b className="text-white">{formatMoney(rentRest + waterRest, currency)}</b> reste à recevoir • Relevé eau prévu le <b className="text-white">{state.settings.waterReadingDay} du mois</b></p>
+            <p className="mt-1.5 text-[13.5px] text-blue-100">{occ} logement(s) occupé(s) sur {totalProps} • <b className="text-white">{formatMoney(rentRest + waterRest, currency)}</b> reste à recevoir • Dates de relevé ajustables par compteur</p>
             <div className="mt-4 flex flex-wrap gap-2.5">
               <Btn variant="success" onClick={() => go('payments')}><Plus size={16} /> Nouveau paiement</Btn>
               <Btn variant="secondary" onClick={() => go('reports')}>Voir rapports <ArrowRight size={15} /></Btn>
@@ -104,7 +104,7 @@ export default function Dashboard({ go, alerts = [] }: { go: (p: PageKey) => voi
           {waterAlerts.length > 0 && (
             <button type="button" onClick={() => { playWaterAlert(); go('water'); }} className="btn-uniform flex items-start gap-3 rounded-2xl border border-cyan-300 bg-gradient-to-br from-cyan-600 to-teal-700 p-4 text-left text-white shadow-lg">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20"><Gauge size={19} /></span>
-              <span className="min-w-0 flex-1"><span className="block text-[14px] font-extrabold">💧 Prélèvement compteur d’eau</span><span className="mt-0.5 block truncate text-[12px] text-cyan-100">{waterAlerts[0].propertyRef} — {waterAlerts[0].dateLabel} • prévu le {state.settings.waterReadingDay}</span><span className="mt-1 block text-[11.5px] font-bold text-white/85">{waterAlerts.length} compteur{waterAlerts.length > 1 ? 's' : ''} à relever ce mois-ci</span></span><ArrowRight size={17} className="mt-1 shrink-0" />
+              <span className="min-w-0 flex-1"><span className="block text-[14px] font-extrabold">💧 Prélèvement compteur d’eau</span><span className="mt-0.5 block truncate text-[12px] text-cyan-100">{waterAlerts[0].propertyRef} — {waterAlerts[0].dateLabel}</span><span className="mt-1 block text-[11.5px] font-bold text-white/85">{waterAlerts.length} compteur{waterAlerts.length > 1 ? 's' : ''} à relever • dates ajustables</span></span><ArrowRight size={17} className="mt-1 shrink-0" />
             </button>
           )}
           {dueAlerts.length > 0 && (

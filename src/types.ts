@@ -72,6 +72,9 @@ export interface WaterMeter {
   meterNumber: string;
   installationDate: string;
   status: MeterStatus;
+  // Optional monthly exception to the general day, and a one-off planned date.
+  readingDay?: number;
+  nextReadingDate?: string;
   createdAt: string;
 }
 
@@ -191,6 +194,25 @@ export interface AppSettings {
   alertRentDaysBefore: number;
 }
 
+export type AuditAction = 'creation' | 'modification' | 'suppression' | 'enregistrement' | 'sauvegarde' | 'export' | 'restauration' | 'consultation';
+
+export interface AuditChange {
+  field: string;
+  before: string;
+  after: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  timestamp: string;
+  actor: string;
+  action: AuditAction;
+  module: string;
+  target: string;
+  details: string;
+  changes?: AuditChange[];
+}
+
 export interface AppState {
   properties: Property[];
   tenants: Tenant[];
@@ -205,4 +227,5 @@ export interface AppState {
   maintenances: MaintenanceItem[];
   documents: DocFile[];
   settings: AppSettings;
+  auditLog: AuditEntry[];
 }

@@ -1,19 +1,20 @@
 import { useMemo, useState } from 'react';
-import { Plus, Droplets, Gauge, AlertTriangle, Receipt } from 'lucide-react';
+import { Plus, Droplets, Gauge, AlertTriangle, Receipt, CalendarDays } from 'lucide-react';
 import { useStore } from '../store/store';
 import { Card, CardHeader, Btn, StatusBadge, Modal, Field, inputCls, EmptyState, Pill, StatCard, FilterBtn } from '../components/ui';
-import { nextWaterReadingDate } from '../utils/alerts';
+import { daysBetween } from '../utils/alerts';
+import { localDateKey, meterReadingSchedule } from '../utils/waterSchedule';
 import { playWaterAlert, playSuccess, playError } from '../utils/sound';
 import { useToast } from '../components/notifications';
 import { CalendarClock } from 'lucide-react';
 import { formatMoney, formatDate, periodShort, uid, MONTHS_FR } from '../utils/helpers';
 
-export default function Water({ search }: { search: string }) {
+export default function Water({ search, onScheduleSettings }: { search: string; onScheduleSettings?: () => void }) {
   const { state, update, waters } = useStore();
   const [tab, setTab] = useState<'compteurs' | 'factures' | 'releves'>('compteurs');
   const [readingModal, setReadingModal] = useState(false);
   const [selectedMeter, setSelectedMeter] = useState('');
-  const [form, setForm] = useState({ newIndex: '', date: new Date().toISOString().slice(0, 10), month: 10, year: 2026 });
+  const [form, setForm] = useState(() => ({ newIndex: '', date: localDateKey(new Date()), month: new Date().getMonth() + 1, year: new Date().getFullYear() }));
   const [error, setError] = useState('');
   const currency = state.settings.currency;
   const { push } = useToast();
@@ -39,7 +40,7 @@ export default function Water({ search }: { search: string }) {
 
   const openReading = (meterId?: string) => {
     setSelectedMeter(meterId || state.waterMeters[0]?.id || '');
-    setForm({ newIndex: '', date: new Date().toISOString().slice(0, 10), month: 10, year: 2026 });
+    setForm({ newIndex: '', date: localDateKey(new Date()), month: new Date().getMonth() + 1, year: new Date().getFullYear() });
     setError('');
     setReadingModal(true);
   };
@@ -66,6 +67,12 @@ export default function Water({ search }: { search: string }) {
     update(s => {
       s.waterReadings.push({ id: readingId, meterId: meter.id, readingDate: form.date, previousReading: prevIdx, currentReading: newIdx, consumption, tariffPerM3: tariff, periodMonth: form.month, periodYear: form.year, createdAt: new Date().toISOString() });
       s.waterInvoices.push({ id: uid('wi'), contractId: contract.id, meterId: meter.id, readingId, periodMonth: form.month, periodYear: form.year, previousIndex: prevIdx, currentIndex: newIdx, consumption, tariffPerM3: tariff, amountDue: amount, createdAt: new Date().toISOString() });
+      const scheduledMeter = s.waterMeters.find(m => m.id === meter.id);
+      if (scheduledMeter?.nextReadingDate) {
+        const planned = scheduledMeter.nextReadingDate;
+        // Once the exceptional period has been read, return to the recurring date.
+        if (planned.slice(0, 7) === `${form.year}-${String(form.month).padStart(2, '0')}`) scheduledMeter.nextReadingDate = undefined;
+      }
       return s;
     });
     playSuccess(); push({severity:'water', title:'Relevé enregistré — facture générée', message:`Consommation ${consumption} m³ • ${amount.toLocaleString('fr-FR')} ${currency} • tarif figé ${tariff} ${currency}/m³`});
@@ -91,12 +98,12 @@ export default function Water({ search }: { search: string }) {
       </div>
 
       <Card>
-        <CardHeader theme="teal" title="Gestion de l'eau" subtitle="Compteurs • Relevés • Factures — tarif historisé par facture" action={<Btn onClick={() => openReading()}><Plus size={15} /> Nouveau relevé</Btn>} />
+        <CardHeader theme="teal" title="Gestion de l'eau" subtitle="Compteurs • Relevés • Factures — tarif historisé par facture" action={<div className="flex flex-wrap gap-2">{onScheduleSettings && <Btn variant="secondary" onClick={onScheduleSettings}><CalendarDays size={15} /> Ajuster les dates</Btn>}<Btn variant="teal" onClick={() => openReading()}><Plus size={15} /> Nouveau relevé</Btn></div>} />
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-cyan-50/40 px-5 py-3">
           {([['compteurs', 'Compteurs'], ['factures', `Factures (${waters.length})`], ['releves', `Relevés (${state.waterReadings.length})`]] as const).map(([v, l]) => (
             <FilterBtn key={v} color="teal" active={tab === v} onClick={() => setTab(v)}>{l}</FilterBtn>
           ))}
-          <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-cyan-600 px-3 py-1.5 text-[12px] font-extrabold text-white shadow"><CalendarClock size={13}/> Prélèvement prévu le {state.settings.waterReadingDay} de chaque mois</span>
+          <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-cyan-600 px-3 py-1.5 text-[12px] font-extrabold text-white shadow"><CalendarClock size={13}/> Planning général : le {state.settings.waterReadingDay} • dates personnalisables par compteur</span>
         </div>
 
         {tab === 'compteurs' && (
@@ -117,9 +124,10 @@ export default function Water({ search }: { search: string }) {
                     <div className="rounded-lg bg-slate-50 p-2"><p className="text-[11px] text-slate-500">Locataire</p><p className="truncate text-[12px] font-bold">{t ? `${t.firstName} ${t.lastName}` : '—'}</p></div>
                     <div className="rounded-lg bg-slate-50 p-2"><p className="text-[11px] text-slate-500">Dernier relevé</p><p className="text-[12px] font-bold">{last ? formatDate(last.readingDate) : '—'}</p></div>
                   </div>
-                  {(() => { const next = nextWaterReadingDate(state, m.id); const diff = Math.floor((new Date(next.getFullYear(),next.getMonth(),next.getDate()).getTime() - new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate()).getTime())/86400000); const hasCur = state.waterReadings.some(r=>r.meterId===m.id && r.periodMonth===new Date().getMonth()+1 && r.periodYear===new Date().getFullYear()); return (
-                    <div className={`mt-3 rounded-xl border p-2.5 text-center text-[12px] font-bold ${!hasCur && diff<=3 ? 'pulse-danger border-cyan-300 bg-cyan-600 text-white' : 'border-cyan-100 bg-cyan-50 text-cyan-800'}`}>
-                      <CalendarClock size={13} className="mr-1 inline"/> Prochain prélèvement : {formatDate(next.toISOString().slice(0,10))} { !hasCur && diff<0 ? `• EN RETARD ${Math.abs(diff)}j` : !hasCur && diff===0 ? "• AUJOURD'HUI" : !hasCur && diff<=3 ? `• dans ${diff}j` : ''}
+                  {(() => { const schedule = meterReadingSchedule(state, m.id); const diff = daysBetween(new Date(), schedule.due); return (
+                    <div className={`mt-3 rounded-xl border p-2.5 text-center text-[12px] font-bold ${m.status === 'actif' && diff <= 3 ? 'pulse-danger border-cyan-300 bg-cyan-600 text-white' : 'border-cyan-100 bg-cyan-50 text-cyan-800'}`}>
+                      <CalendarClock size={13} className="mr-1 inline"/> Prochain relevé : {formatDate(localDateKey(schedule.due))} {m.status === 'actif' && diff < 0 ? `• EN RETARD ${Math.abs(diff)}j` : m.status === 'actif' && diff === 0 ? "• AUJOURD'HUI" : m.status === 'actif' && diff <= 3 ? `• dans ${diff}j` : ''}
+                      <span className="block text-[10.5px] font-medium opacity-80">{schedule.source === 'ponctuelle' ? 'Date décalée dans les paramètres' : schedule.source === 'compteur' ? 'Jour personnalisé du compteur' : 'Jour général'}</span>
                     </div> ); })()}
                   <Btn variant="teal" size="sm" className="mt-2.5 w-full" onClick={() => { playWaterAlert(); openReading(m.id); }}><Droplets size={14} /> Saisir relevé</Btn>
                 </div>

@@ -12,7 +12,10 @@ export function formatMoney(n: number, currency = 'F'): string {
 export function formatDate(d: string): string {
   if (!d) return '—';
   try {
-    const dt = new Date(d);
+    // A YYYY-MM-DD business date must remain the same day in every local timezone.
+    const dt = /^\d{4}-\d{2}-\d{2}$/.test(d)
+      ? new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)))
+      : new Date(d);
     if (isNaN(dt.getTime())) return d;
     return dt.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   } catch {

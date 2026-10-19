@@ -1,13 +1,13 @@
 import React from 'react';
-import { LayoutDashboard, Building2, Users, FileText, Banknote, Droplets, CreditCard, Wrench, FolderOpen, BarChart3, Save, Settings, Search, WifiOff, Database, ShieldCheck, Home } from 'lucide-react';
+import { LayoutDashboard, Building2, Users, FileText, Banknote, Droplets, CreditCard, Wrench, FolderOpen, BarChart3, Save, Settings, Search, WifiOff, Database, ShieldCheck, Home, History } from 'lucide-react';
 import { NotificationBell } from './notifications';
 import type { AppAlert } from '../utils/alerts';
 import { playClick } from '../utils/sound';
 
-export type PageKey = 'dashboard' | 'properties' | 'tenants' | 'contracts' | 'rents' | 'water' | 'payments' | 'maintenance' | 'documents' | 'reports' | 'backup' | 'settings';
+export type PageKey = 'dashboard' | 'properties' | 'tenants' | 'contracts' | 'rents' | 'water' | 'payments' | 'maintenance' | 'documents' | 'reports' | 'backup' | 'settings' | 'history';
 
-export const HOUSING_IMG = 'https://images.pexels.com/photos/39978729/pexels-photo-39978729.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200';
-export const HOUSING_IMG_SIDEBAR = 'https://images.pexels.com/photos/2771935/pexels-photo-2771935.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200';
+export const HOUSING_IMG = './images/residence.jpg';
+export const HOUSING_IMG_SIDEBAR = './images/residence-sidebar.jpg';
 
 const NAV: { key: PageKey; label: string; icon: React.ReactNode; group: string }[] = [
   { key: 'dashboard', label: 'Tableau de bord', icon: <LayoutDashboard size={17} />, group: 'Pilotage' },
@@ -21,6 +21,7 @@ const NAV: { key: PageKey; label: string; icon: React.ReactNode; group: string }
   { key: 'documents', label: 'Documents', icon: <FolderOpen size={17} />, group: 'Suivi' },
   { key: 'reports', label: 'Rapports', icon: <BarChart3 size={17} />, group: 'Suivi' },
   { key: 'backup', label: 'Sauvegarde', icon: <Save size={17} />, group: 'Système' },
+  { key: 'history', label: 'Historique', icon: <History size={17} />, group: 'Système' },
   { key: 'settings', label: 'Paramètres', icon: <Settings size={17} />, group: 'Système' },
 ];
 
@@ -76,7 +77,7 @@ export function Sidebar({ page, setPage, counts, autoBackupLabel, occupiedLabel 
 
       <div className="relative border-t border-white/12 p-3.5">
         <div className="rounded-2xl bg-white/10 p-3 ring-1 ring-white/15 backdrop-blur-sm">
-          <div className="flex items-center gap-2 text-[11.5px] font-bold text-emerald-300"><WifiOff size={13} /> Hors ligne • <span className="flex items-center gap-1 text-slate-200"><Database size={12} /> SQLite locale</span></div>
+          <div className="flex items-center gap-2 text-[11.5px] font-bold text-emerald-300"><WifiOff size={13} /> Hors ligne • <span className="flex items-center gap-1 text-slate-200"><Database size={12} /> Stockage local</span></div>
           <div className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-snug text-blue-100/85"><ShieldCheck size={13} className="mt-0.5 shrink-0 text-emerald-300" /><span>{autoBackupLabel}</span></div>
         </div>
       </div>

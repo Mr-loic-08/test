@@ -1,4 +1,5 @@
 import type { AppState } from '../types';
+import { meterReadingSchedule } from './waterSchedule';
 
 export type AlertSeverity = 'danger' | 'warning' | 'water' | 'info';
 export interface AppAlert {
@@ -15,7 +16,9 @@ export interface AppAlert {
 }
 
 const DAY = 86400000;
-export function daysBetween(a: Date, b: Date) { return Math.floor((b.getTime() - a.getTime()) / DAY); }
+export function daysBetween(a: Date, b: Date) {
+  return Math.round((Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) - Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) / DAY);
+}
 
 export function computeAlerts(state: AppState, rents: { id: string; contractId: string; month: number; year: number; amountDue: number; paid: number; rest: number; status: string }[], waters: { id: string; contractId: string; periodMonth: number; periodYear: number; amountDue: number; rest: number; status: string }[], now = new Date()): AppAlert[] {
   const alerts: AppAlert[] = [];
@@ -40,7 +43,7 @@ export function computeAlerts(state: AppState, rents: { id: string; contractId: 
         dateLabel: `En retard de ${lateDays} jour${lateDays > 1 ? 's' : ''}`,
         days: lateDays, page: 'rents', tenantName, propertyRef: p?.reference,
       });
-    } else if (lateDays >= -3) {
+    } else if (lateDays >= -(state.settings.alertRentDaysBefore ?? 3)) {
       alerts.push({
         id: `due-rent-${r.id}`, severity: 'warning', category: 'echeance_loyer',
         title: `Échéance loyer proche — ${tenantName}`,
@@ -77,19 +80,12 @@ export function computeAlerts(state: AppState, rents: { id: string; contractId: 
     const t = state.tenants.find(x => x.id === c.tenantId);
     const readings = state.waterReadings.filter(r => r.meterId === m.id).sort((a, b) => b.readingDate.localeCompare(a.readingDate));
     const last = readings[0];
-    const hasCurrentMonth = readings.some(r => r.periodMonth === today.getMonth() + 1 && r.periodYear === today.getFullYear());
-    // Prochain relevé prévu : le waterReadingDay du mois courant, ou +30j depuis dernier relevé
-    let nextDue = new Date(today.getFullYear(), today.getMonth(), waterReadingDay);
-    if (last) {
-      const byCycle = new Date(new Date(last.readingDate).getTime() + 30 * DAY);
-      // on prend la date la plus proche cohérente
-      if (!hasCurrentMonth && byCycle < nextDue) nextDue = byCycle;
-    }
+    const { due: nextDue } = meterReadingSchedule(state, m.id, today);
     const diff = daysBetween(today, nextDue); // >0 futur, <0 retard
-    if (!hasCurrentMonth && diff <= 3) {
+    if (diff <= 3) {
       const overdue = diff < 0;
       alerts.push({
-        id: `reading-${m.id}-${today.getFullYear()}-${today.getMonth() + 1}`,
+        id: `reading-${m.id}-${nextDue.getFullYear()}-${nextDue.getMonth() + 1}`,
         severity: 'water', category: 'releve_eau',
         title: overdue ? `Relevé compteur en retard — ${p?.reference || ''}` : `Prélèvement compteur à prévoir — ${p?.reference || ''}`,
         message: `Compteur ${m.meterNumber} • ${t ? `${t.firstName} ${t.lastName}` : ''} • dernier index ${last ? `${last.currentReading} m³ le ${new Date(last.readingDate).toLocaleDateString('fr-FR')}` : 'aucun relevé'} • relevé prévu le ${nextDue.toLocaleDateString('fr-FR')}`,
@@ -114,13 +110,5 @@ export function computeAlerts(state: AppState, rents: { id: string; contractId: 
 }
 
 export function nextWaterReadingDate(state: AppState, meterId: string, now = new Date()): Date {
-  const day = state.settings.waterReadingDay ?? 25;
-  const readings = state.waterReadings.filter(r => r.meterId === meterId).sort((a, b) => b.readingDate.localeCompare(a.readingDate));
-  const last = readings[0];
-  let d = new Date(now.getFullYear(), now.getMonth(), day);
-  if (last) {
-    const byCycle = new Date(new Date(last.readingDate).getTime() + 30 * DAY);
-    if (byCycle > d) d = byCycle;
-  }
-  return d;
+  return meterReadingSchedule(state, meterId, now).due;
 }

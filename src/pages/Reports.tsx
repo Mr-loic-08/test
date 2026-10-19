@@ -6,7 +6,7 @@ import { formatMoney, periodShort, formatDate, toCSV, downloadFile } from '../ut
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
 export default function Reports() {
-  const { state, rents, waters } = useStore();
+  const { state, rents, waters, logAction } = useStore();
   const [year, setYear] = useState(2026);
   const [tenantF, setTenantF] = useState('all');
   const currency = state.settings.currency;
@@ -47,12 +47,13 @@ export default function Reports() {
       return { Periode: periodShort(r.month, r.year), Contrat: c?.reference, Locataire: t ? `${t.firstName} ${t.lastName}` : '', Logement: p?.reference, Attendu: r.amountDue, Paye: r.paid, Reste: r.rest, Etat: r.status };
     });
     downloadFile(`rapport-loyers-${year}.csv`, toCSV(rows), 'text/csv');
+    logAction({ action: 'export', module: 'Rapports', target: `Rapport des loyers ${year} (CSV)`, details: `${rows.length} échéance(s) exportée(s).` });
   };
 
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader title="Rapports et statistiques" subtitle="Revenus • impayés • historiques — calculés depuis les données" action={<div className="flex gap-2"><Btn variant="secondary" size="sm" onClick={exportCSV}><Download size={14} /> CSV</Btn><Btn size="sm" onClick={() => window.print()}><Printer size={14} /> Imprimer / PDF</Btn></div>} />
+        <CardHeader title="Rapports et statistiques" subtitle="Revenus • impayés • historiques — calculés depuis les données" action={<div className="flex gap-2"><Btn variant="secondary" size="sm" onClick={exportCSV}><Download size={14} /> CSV</Btn><Btn size="sm" onClick={() => { logAction({ action: 'export', module: 'Rapports', target: `Rapport ${year} (impression / PDF)`, details: 'Impression ou enregistrement PDF du rapport.' }); window.print(); }}><Printer size={14} /> Imprimer / PDF</Btn></div>} />
         <div className="flex flex-wrap items-center gap-2.5 px-5 py-3">
           <select value={year} onChange={e => setYear(Number(e.target.value))} className="rounded-lg border border-slate-200 px-3 py-1.5 text-[13px] font-bold">{[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}</select>
           <select value={tenantF} onChange={e => setTenantF(e.target.value)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-[13px] font-semibold"><option value="all">Tous locataires</option>{state.tenants.map(t => <option key={t.id} value={t.id}>{t.firstName} {t.lastName}</option>)}</select>

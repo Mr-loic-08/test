@@ -8,7 +8,7 @@ import { formatDateTime, toCSV, downloadFile, formatMoney, periodShort } from '.
 import * as XLSX from 'xlsx';
 
 export default function Backup() {
-  const { state, update, reset, importState, rents, waters, triggerAutoBackup, lastSavedAt } = useStore();
+  const { state, update, reset, importState, logAction, rents, waters, triggerAutoBackup, lastSavedAt } = useStore();
   const { push } = useToast();
   const autoHistory = readAutoBackupHistory();
   const [msg, setMsg] = useState('');
@@ -19,6 +19,7 @@ export default function Backup() {
     const payload = JSON.stringify({ app: 'GestionLocative', version: '1.0', exportedAt: new Date().toISOString(), data: state }, null, 2);
     downloadFile(`gestion-locative-backup-${new Date().toISOString().slice(0, 10)}.json`, payload, 'application/json');
     update(s => { s.settings.lastBackup = new Date().toISOString(); return s; });
+    logAction({ action: 'sauvegarde', module: 'Sauvegarde', target: 'Sauvegarde complète JSON', details: 'Export de la base locale et des références des documents.' });
     setMsg('Sauvegarde complète téléchargée (base + documents référencés). Conservez aussi le dossier des fichiers joints.'); push({severity:'success', title:'Sauvegarde complète téléchargée', message:'Fichier JSON enregistré — pensez au dossier des pièces jointes.'});
   };
 
@@ -59,6 +60,7 @@ export default function Backup() {
       name = 'locataires'; rows = state.tenants.map(t => ({ Prenom: t.firstName, Nom: t.lastName, Telephone: t.phone, Email: t.email || '', Adresse: t.address }));
     }
     downloadFile(`${name}-${new Date().toISOString().slice(0, 10)}.csv`, toCSV(rows), 'text/csv');
+    logAction({ action: 'export', module: 'Sauvegarde', target: `${name} (CSV)`, details: `${rows.length} ligne(s) exportée(s).` });
     setMsg(`Export CSV « ${name} » téléchargé (${rows.length} lignes).`);
   };
 
@@ -74,6 +76,7 @@ export default function Backup() {
     XLSX.utils.book_append_sheet(wb, ws2, 'Eau');
     XLSX.utils.book_append_sheet(wb, ws3, 'Paiements');
     XLSX.writeFile(wb, `gestion-locative-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    logAction({ action: 'export', module: 'Sauvegarde', target: 'Données financières (Excel)', details: 'Export Excel des loyers, de l’eau et des paiements.' });
     setMsg('Export Excel téléchargé (3 onglets : Loyers, Eau, Paiements).');
   };
 
@@ -103,7 +106,7 @@ export default function Backup() {
       </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
-          <CardHeader title="Sauvegarde & restauration" subtitle="Base SQLite simulée en local — exportable à tout moment" />
+          <CardHeader title="Sauvegarde & restauration" subtitle="Données stockées localement — exportables à tout moment" />
           <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-3">
             <div className="rounded-xl border border-slate-200 p-4 text-center">
               <Save size={26} className="mx-auto text-blue-600" />
@@ -135,7 +138,7 @@ export default function Backup() {
         <Card>
           <CardHeader title="Informations" />
           <div className="space-y-3 p-5 text-[13px]">
-            <div className="flex items-center gap-2.5"><Database size={17} className="text-slate-500" /><span>Base de données : <b>SQLite (locale)</b></span></div>
+            <div className="flex items-center gap-2.5"><Database size={17} className="text-slate-500" /><span>Stockage actuel : <b>navigateur local</b></span></div>
             <div className="flex items-center gap-2.5"><ShieldCheck size={17} className="text-emerald-600" /><span>Taille estimée : <b>{sizeKo} Ko</b></span></div>
             <div className="rounded-xl bg-slate-50 p-3 text-[12.5px]">
               <p><b>{state.properties.length}</b> biens • <b>{state.tenants.length}</b> locataires • <b>{state.contracts.length}</b> contrats</p>

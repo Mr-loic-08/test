@@ -6,7 +6,7 @@ import type { Contract, ContractStatus } from '../types';
 import { formatMoney, formatDate, uid, contractStatusLabel, periodShort } from '../utils/helpers';
 
 export default function Contracts({ search }: { search: string }) {
-  const { state, update, contractRents, contractWaters } = useStore();
+  const { state, update, logAction, contractRents, contractWaters } = useStore();
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
@@ -153,7 +153,7 @@ export default function Contracts({ search }: { search: string }) {
               {detailTab === 'eau' && (
                 <div className="max-h-[300px] overflow-y-auto rounded-xl border"><table className="app-table w-full text-left text-[12.5px]"><thead className="sticky top-0 bg-slate-50"><tr><th className="px-3 py-2">Période</th><th className="px-3 py-2">Conso</th><th className="px-3 py-2">Montant</th><th className="px-3 py-2">Payé</th><th className="px-3 py-2">État</th></tr></thead><tbody className="divide-y">{ws.map(w => <tr key={w.id}><td className="px-3 py-2 font-bold">{periodShort(w.periodMonth, w.periodYear)}</td><td className="px-3 py-2">{w.consumption} m³</td><td className="px-3 py-2">{formatMoney(w.amountDue, currency)}</td><td className="px-3 py-2">{formatMoney(w.paid, currency)}</td><td className="px-3 py-2"><StatusBadge status={w.status} size="sm" /></td></tr>)}{ws.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-500">Aucune facture.</td></tr>}</tbody></table></div>
               )}
-              <div className="flex justify-end gap-2"><Btn variant="secondary" onClick={() => window.print()}><Printer size={14} /> Imprimer</Btn><Btn onClick={() => setSelectedId(null)}>Fermer</Btn></div>
+              <div className="flex justify-end gap-2"><Btn variant="secondary" onClick={() => { logAction({ action: 'export', module: 'Contrats', target: selected.reference, details: 'Impression du contrat demandée.' }); window.print(); }}><Printer size={14} /> Imprimer</Btn><Btn onClick={() => setSelectedId(null)}>Fermer</Btn></div>
             </div>
           );
         })()}
