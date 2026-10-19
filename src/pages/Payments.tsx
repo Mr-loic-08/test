@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, Eye, Printer, CheckCircle2, Wallet } from 'lucide-react';
 import { useStore } from '../store/store';
 import { Card, CardHeader, Btn, Modal, Field, inputCls, EmptyState, Pill } from '../components/ui';
-import { formatMoney, formatDate, periodShort, methodLabel } from '../utils/helpers';
+import { formatMoney, formatDate, periodShort, methodLabel, uid } from '../utils/helpers';
+import MonthCalendar, { parseKey } from '../components/MonthCalendar';
 import { useToast } from '../components/notifications';
 import type { PaymentMethod } from '../types';
 
 export default function Payments({ search }: { search: string }) {
-  const { state, rents, waters, addPaymentWithAllocations } = useStore();
+  const { state, update, rents, waters, addPaymentWithAllocations } = useStore();
   const { push } = useToast();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -17,7 +18,8 @@ export default function Payments({ search }: { search: string }) {
   // wizard state
   const [tenantId, setTenantId] = useState('');
   const [kind, setKind] = useState<'mixte' | 'loyer' | 'eau'>('mixte');
-  const [selRents, setSelRents] = useState<string[]>([]);
+  const [selMonths, setSelMonths] = useState<string[]>([]);
+  const [amountTouched, setAmountTouched] = useState(false);
   const [selWaters, setSelWaters] = useState<string[]>([]);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<PaymentMethod>('especes');
@@ -25,15 +27,27 @@ export default function Payments({ search }: { search: string }) {
   const [comment, setComment] = useState('');
 
   const contract = state.contracts.find(c => c.tenantId === tenantId && c.status === 'actif') || null;
-  const tenantRents = useMemo(() => contract ? rents.filter(r => r.contractId === contract.id && r.rest > 0).sort((a, b) => a.year - b.year || a.month - b.month) : [], [rents, contract]);
+  const contractRentsAll = useMemo(() => contract ? rents.filter(r => r.contractId === contract.id) : [], [rents, contract]);
+  // Mois sélectionnés dans le calendrier → échéances existantes OU à créer (paiement d'avance / longue durée)
+  const rentEntries = useMemo(() => {
+    if (!contract) return [] as { id: string; month: number; year: number; amountDue: number; rest: number; isNew: boolean }[];
+    return [...selMonths].sort().map(k => {
+      const { year, month } = parseKey(k);
+      const ex = contractRentsAll.find(r => r.year === year && r.month === month);
+      if (ex) return { id: ex.id, month, year, amountDue: ex.amountDue, rest: ex.rest, isNew: false };
+      return { id: `new_${k}`, month, year, amountDue: contract.monthlyRent, rest: contract.monthlyRent, isNew: true };
+    }).filter(e => e.isNew || e.rest > 0);
+  }, [selMonths, contractRentsAll, contract]);
   const tenantWaters = useMemo(() => contract ? waters.filter(w => w.contractId === contract.id && w.rest > 0).sort((a, b) => a.periodYear - b.periodYear || a.periodMonth - b.periodMonth) : [], [waters, contract]);
 
-  const selectedRentObjs = tenantRents.filter(r => selRents.includes(r.id));
+  const selectedRentObjs = rentEntries;
   const selectedWaterObjs = tenantWaters.filter(w => selWaters.includes(w.id));
   const totalRentSel = selectedRentObjs.reduce((s, r) => s + r.rest, 0);
   const totalWaterSel = selectedWaterObjs.reduce((s, w) => s + w.rest, 0);
   const totalDue = totalRentSel + totalWaterSel;
   const amountNum = Number(amount) || 0;
+  // Montant pré-rempli avec le total dû tant que l'utilisateur ne le modifie pas
+  useEffect(() => { if (!amountTouched) setAmount(totalDue > 0 ? String(totalDue) : ''); }, [totalDue, amountTouched]);
 
   // Répartition chronologique : loyers d'abord (chrono), puis eau (chrono) — ou selon kind
   const preview = useMemo(() => {
@@ -58,25 +72,43 @@ export default function Payments({ search }: { search: string }) {
   }, [amountNum, selectedRentObjs, selectedWaterObjs, kind]);
 
   const openWizard = () => {
-    setTenantId(''); setKind('mixte'); setSelRents([]); setSelWaters([]); setAmount(''); setMethod('especes'); setDate(new Date().toISOString().slice(0, 10)); setComment('');
+    setTenantId(''); setKind('mixte'); setSelMonths([]); setSelWaters([]); setAmount(''); setAmountTouched(false); setMethod('especes'); setDate(new Date().toISOString().slice(0, 10)); setComment('');
     setWizardOpen(true);
   };
 
-  const toggleRent = (id: string) => setSelRents(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const toggleWater = (id: string) => setSelWaters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const validate = () => {
     if (!contract) { alert('Sélectionnez un locataire avec contrat actif.'); return; }
     if (selectedRentObjs.length === 0 && selectedWaterObjs.length === 0) { alert('Sélectionnez au moins une échéance ou facture.'); return; }
     if (amountNum <= 0) { alert('Montant reçu invalide.'); return; }
-    const allocations = [
+    const allocations: { rentScheduleId?: string; waterInvoiceId?: string; allocatedAmount: number }[] = [
       ...preview.rentAllocs.filter(a => a.alloc > 0).map(a => ({ rentScheduleId: a.id, allocatedAmount: a.alloc })),
       ...preview.waterAllocs.filter(a => a.alloc > 0).map(a => ({ waterInvoiceId: a.id, allocatedAmount: a.alloc })),
     ];
+    // Crée les échéances manquantes (mois futurs payés d'avance) puis relie les affectations
+    const idMap = new Map<string, string>();
+    const toCreate = preview.rentAllocs.filter(a => a.alloc > 0 && a.id.startsWith('new_'));
+    if (toCreate.length) {
+      toCreate.forEach(a => idMap.set(a.id, uid('rs')));
+      update(s => {
+        toCreate.forEach(a => {
+          const { year, month } = parseKey(a.id.slice(4));
+          if (!s.rentSchedules.some(r => r.contractId === contract.id && r.year === year && r.month === month)) {
+            s.rentSchedules.push({ id: idMap.get(a.id)!, contractId: contract.id, month, year, amountDue: contract.monthlyRent, createdAt: new Date().toISOString() });
+          } else {
+            const ex = s.rentSchedules.find(r => r.contractId === contract.id && r.year === year && r.month === month)!;
+            idMap.set(a.id, ex.id);
+          }
+        });
+        return s;
+      });
+    }
+    const finalAllocations = allocations.map(a => a.rentScheduleId && idMap.has(a.rentScheduleId) ? { ...a, rentScheduleId: idMap.get(a.rentScheduleId)! } : a);
     const p = addPaymentWithAllocations({
       tenantId, contractId: contract.id, propertyId: contract.propertyId, paymentDate: date,
       amount: amountNum, method, kind: kind === 'mixte' ? 'mixte' : kind, comment,
-      allocations,
+      allocations: finalAllocations,
     });
     setWizardOpen(false);
     push({severity:'success', title:`Paiement ${p.reference} enregistré`, message:`${amountNum.toLocaleString('fr-FR')} ${currency} encaissés • sauvegarde auto déclenchée • reçu prêt à imprimer`});
@@ -144,7 +176,7 @@ export default function Payments({ search }: { search: string }) {
       {/* Wizard */}
       <Modal open={wizardOpen} onClose={() => setWizardOpen(false)} title="Nouveau paiement (multi-mois)" subtitle="Sélectionnez les périodes, saisissez le montant — répartition chronologique automatique" width="max-w-4xl">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="Locataire *"><select className={inputCls} value={tenantId} onChange={e => { setTenantId(e.target.value); setSelRents([]); setSelWaters([]); }}><option value="">— Choisir —</option>{state.tenants.map(t => { const c = state.contracts.find(c => c.tenantId === t.id && c.status === 'actif'); if (!c) return null; const p = state.properties.find(p => p.id === c.propertyId); return <option key={t.id} value={t.id}>{t.firstName} {t.lastName} — {p?.reference} ({formatMoney(c.monthlyRent, currency)}/mois)</option>; })}</select></Field>
+          <Field label="Locataire *"><select className={inputCls} value={tenantId} onChange={e => { setTenantId(e.target.value); setSelMonths([]); setSelWaters([]); setAmountTouched(false); }}><option value="">— Choisir —</option>{state.tenants.map(t => { const c = state.contracts.find(c => c.tenantId === t.id && c.status === 'actif'); if (!c) return null; const p = state.properties.find(p => p.id === c.propertyId); return <option key={t.id} value={t.id}>{t.firstName} {t.lastName} — {p?.reference} ({formatMoney(c.monthlyRent, currency)}/mois)</option>; })}</select></Field>
           <Field label="Type de paiement"><div className="flex gap-2">{([['mixte', 'Loyer + Eau'], ['loyer', 'Loyer uniquement'], ['eau', 'Eau uniquement']] as const).map(([v, l]) => <button key={v} onClick={() => setKind(v)} className={`flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-bold ${kind === v ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600'}`}>{l}</button>)}</div></Field>
         </div>
 
@@ -152,17 +184,9 @@ export default function Payments({ search }: { search: string }) {
           <>
             {(kind === 'mixte' || kind === 'loyer') && (
               <div className="mt-4">
-                <p className="mb-2 text-[12px] font-bold uppercase text-slate-500">Échéances de loyer impayées — {contract.reference} (cochez les mois)</p>
-                {tenantRents.length === 0 ? <p className="rounded-lg bg-emerald-50 p-3 text-[12.5px] text-emerald-700">Aucun loyer impayé. 🎉</p> : (
-                  <div className="flex flex-wrap gap-2">
-                    {tenantRents.map(r => (
-                      <button key={r.id} onClick={() => toggleRent(r.id)} className={`rounded-xl border px-3 py-2 text-left text-[12.5px] ${selRents.includes(r.id) ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}>
-                        <span className="font-extrabold">{periodShort(r.month, r.year)}</span>
-                        <span className="block text-slate-600">Reste {formatMoney(r.rest, currency)}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <p className="mb-2 text-[12px] font-bold uppercase text-slate-500">Mois de loyer à payer — {contract.reference} (cliquez dans le calendrier)</p>
+                <MonthCalendar key={contract.id} contract={contract} rents={contractRentsAll} selected={selMonths} onChange={setSelMonths} currency={currency} />
+                {rentEntries.some(e => e.isNew) && <p className="mt-2 rounded-lg bg-blue-50 p-2.5 text-[12px] font-semibold text-blue-800">ℹ️ {rentEntries.filter(e => e.isNew).length} échéance(s) future(s) seront créées automatiquement à la validation (paiement d'avance).</p>}
               </div>
             )}
             {(kind === 'mixte' || kind === 'eau') && (
@@ -185,7 +209,7 @@ export default function Payments({ search }: { search: string }) {
               <Field label="Loyer sélectionné"><input readOnly className={`${inputCls} bg-slate-50 font-bold`} value={formatMoney(totalRentSel, currency)} /></Field>
               <Field label="Eau sélectionnée"><input readOnly className={`${inputCls} bg-slate-50 font-bold`} value={formatMoney(totalWaterSel, currency)} /></Field>
               <Field label="Total dû sélect."><input readOnly className={`${inputCls} bg-blue-50 font-extrabold text-blue-800`} value={formatMoney(totalDue, currency)} /></Field>
-              <Field label="Montant reçu *"><input type="number" className={`${inputCls} font-extrabold`} value={amount} onChange={e => setAmount(e.target.value)} placeholder="Ex : 450000" /></Field>
+              <Field label="Montant reçu *"><input type="number" className={`${inputCls} font-extrabold`} value={amount} onChange={e => { setAmount(e.target.value); setAmountTouched(true); }} placeholder="Ex : 450000" />{amountTouched && totalDue > 0 && <button type="button" onClick={() => setAmountTouched(false)} className="mt-1 text-[11.5px] font-bold text-blue-600 hover:underline">↺ Utiliser le total dû ({formatMoney(totalDue, currency)})</button>}</Field>
               <Field label="Date"><input type="date" className={inputCls} value={date} onChange={e => setDate(e.target.value)} /></Field>
               <Field label="Mode"><select className={inputCls} value={method} onChange={e => setMethod(e.target.value as PaymentMethod)}><option value="especes">Espèces</option><option value="virement">Virement</option><option value="cheque">Chèque</option><option value="mobile_money">Mobile Money</option><option value="autre">Autre</option></select></Field>
               <Field label="Commentaire" className="col-span-2"><input className={inputCls} value={comment} onChange={e => setComment(e.target.value)} placeholder="Ex : Oct–Déc 2026" /></Field>

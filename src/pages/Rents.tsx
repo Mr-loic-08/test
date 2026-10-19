@@ -54,7 +54,7 @@ export default function Rents({ search }: { search: string }) {
     setGenOpen(false);
   };
 
-  const years = [...new Set(rents.map(r => r.year))].sort();
+  const years = (() => { const s = new Set<number>(rents.map(r => r.year)); state.contracts.forEach(c => { for (let y = Number(c.startDate.slice(0, 4)); y <= Number(c.endDate.slice(0, 4)); y++) s.add(y); }); s.add(new Date().getFullYear()); return [...s].sort(); })();
 
   return (
     <div className="space-y-4">
