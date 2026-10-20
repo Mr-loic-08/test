@@ -17,6 +17,7 @@ import Reports from './pages/Reports';
 import Backup from './pages/Backup';
 import Settings from './pages/Settings';
 import History from './pages/History';
+import Splash from './components/Splash';
 import { localDateKey } from './utils/waterSchedule';
 
 const TITLES: Record<PageKey, { title: string; subtitle: string }> = {
@@ -44,6 +45,7 @@ function timeAgo(iso?: string) {
 }
 
 function ShellInner() {
+  const [booted, setBooted] = useState(false);
   const [page, setPage] = useState<PageKey>('dashboard');
   const [settingsTab, setSettingsTab] = useState<'bailleur' | 'eau'>('bailleur');
   const [search, setSearch] = useState('');
@@ -118,6 +120,7 @@ function ShellInner() {
 
   return (
     <div className="min-h-screen">
+      {!booted && <Splash onDone={() => setBooted(true)} />}
       <Sidebar page={page} setPage={navigate} counts={counts} autoBackupLabel={autoLabel} occupiedLabel={`${occ}/${state.properties.length} logements occupés`} />
       <div className="ml-[248px] min-h-screen">
         <Topbar title={TITLES[page].title} subtitle={TITLES[page].subtitle} search={search} setSearch={setSearch} landlordName={state.settings.company || state.settings.landlordName} alerts={alerts} go={navigate} autoBackupLabel={autoLabel} lastSavedLabel={lastSavedLabel} />
@@ -136,7 +139,7 @@ function ShellInner() {
           {page === 'settings' && <Settings initialTab={settingsTab} onOpenHistory={() => navigate('history')} />}
           {page === 'history' && <History search={search} />}
           <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-slate-300/60 py-4 text-[11.5px] text-slate-500">
-            <span>Gestion Locative • Stockage local • Hors ligne • © {new Date().getFullYear()} {state.settings.company}</span>
+            <span>ML · Gestion Locative • Stockage local • Hors ligne • © {new Date().getFullYear()} {state.settings.company}</span>
             <span className="font-semibold text-emerald-600">● {lastSavedLabel} • {state.settings.autoBackupEnabled ? `Auto-save ${state.settings.autoBackupIntervalMinutes} min` : 'Auto-save OFF'}</span>
           </footer>
         </main>

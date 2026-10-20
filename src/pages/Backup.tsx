@@ -5,10 +5,12 @@ import { useToast } from '../components/notifications';
 import { useStore } from '../store/store';
 import { Card, CardHeader, Btn } from '../components/ui';
 import { formatDateTime, toCSV, downloadFile, formatMoney, periodShort } from '../utils/helpers';
+import { buildBackupFile, parseBackup } from '../utils/sync';
+import SyncPanel from '../components/SyncPanel';
 import * as XLSX from 'xlsx';
 
 export default function Backup() {
-  const { state, update, reset, importState, logAction, rents, waters, triggerAutoBackup, lastSavedAt } = useStore();
+  const { state, update, reset, importState, logAction, rents, waters, triggerAutoBackup, lastSavedAt, device } = useStore();
   const { push } = useToast();
   const autoHistory = readAutoBackupHistory();
   const [msg, setMsg] = useState('');
@@ -16,7 +18,7 @@ export default function Backup() {
   const currency = state.settings.currency;
 
   const backup = () => {
-    const payload = JSON.stringify({ app: 'GestionLocative', version: '1.0', exportedAt: new Date().toISOString(), data: state }, null, 2);
+    const payload = JSON.stringify(buildBackupFile(state, { id: device.id, name: device.name }), null, 2);
     downloadFile(`gestion-locative-backup-${new Date().toISOString().slice(0, 10)}.json`, payload, 'application/json');
     update(s => { s.settings.lastBackup = new Date().toISOString(); return s; });
     logAction({ action: 'sauvegarde', module: 'Sauvegarde', target: 'Sauvegarde complète JSON', details: 'Export de la base locale et des références des documents.' });
@@ -27,13 +29,18 @@ export default function Backup() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = JSON.parse(String(reader.result));
-        const data = parsed.data || parsed;
-        if (!data.properties || !data.tenants) throw new Error('Format invalide');
-        if (!confirm('Restaurer cette sauvegarde ? Les données actuelles seront remplacées.')) return;
+        const { data, device: origin, exportedAt } = parseBackup(String(reader.result));
+        const origin_label = origin?.name ? ` (appareil : ${origin.name})` : '';
+        if (!confirm(`Restaurer cette sauvegarde${origin_label} ? Les données actuelles de cet appareil seront remplacées.\n\nPour réunir le contenu des deux appareils sans rien perdre, utilisez plutôt la synchronisation ci-dessous.`)) return;
         importState(data);
+        logAction({ action: 'restauration', module: 'Sauvegarde', target: f.name, details: `Restauration complète${origin_label}${exportedAt ? ` · fichier du ${formatDateTime(exportedAt)}` : ''}.` });
         setMsg('Sauvegarde restaurée avec succès.');
-      } catch { setMsg('Erreur : fichier de sauvegarde invalide.'); }
+        push({ severity: 'success', title: 'Sauvegarde restaurée' });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Fichier de sauvegarde invalide.';
+        setMsg(`Erreur : ${message}`);
+        push({ severity: 'danger', title: 'Restauration impossible', message });
+      }
     };
     reader.readAsText(f);
   };
@@ -104,6 +111,8 @@ export default function Backup() {
           <div className="mt-4 flex flex-wrap gap-2">{autoHistory.slice(0,5).map((h,i)=>(<span key={i} className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11.5px] font-bold ring-1 ring-white/20"><Clock3 size={11}/> {new Date(h.at).toLocaleString('fr-FR')} • {h.sizeKo} Ko</span>))}</div>
         )}
       </div>
+      <SyncPanel />
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader title="Sauvegarde & restauration" subtitle="Données stockées localement — exportables à tout moment" />
@@ -116,9 +125,9 @@ export default function Backup() {
             </div>
             <div className="rounded-xl border border-slate-200 p-4 text-center">
               <Upload size={26} className="mx-auto text-emerald-600" />
-              <p className="mt-2 text-[13.5px] font-extrabold">Restaurer</p>
-              <p className="mt-1 text-[12px] text-slate-500">Depuis un fichier .json</p>
-              <Btn variant="secondary" className="mt-3 w-full" onClick={() => fileRef.current?.click()}>Importer</Btn>
+              <p className="mt-2 text-[13.5px] font-extrabold">Restaurer (remplacer)</p>
+              <p className="mt-1 text-[12px] text-slate-500">Écrase les données de cet appareil</p>
+              <Btn variant="secondary" className="mt-3 w-full" onClick={() => fileRef.current?.click()}>Importer un fichier</Btn>
               <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) restoreFile(f); e.target.value = ''; }} />
             </div>
             <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-4 text-center">

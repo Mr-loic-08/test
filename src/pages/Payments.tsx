@@ -4,6 +4,7 @@ import { useStore } from '../store/store';
 import { Card, CardHeader, Btn, Modal, Field, inputCls, EmptyState, Pill } from '../components/ui';
 import { formatMoney, formatDate, periodShort, methodLabel, uid } from '../utils/helpers';
 import MonthCalendar, { parseKey } from '../components/MonthCalendar';
+import Logo from '../components/Logo';
 import { useToast } from '../components/notifications';
 import type { PaymentMethod } from '../types';
 
@@ -271,6 +272,7 @@ export default function Payments({ search }: { search: string }) {
           <div>
             <div id="receipt-print" className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-6">
               <div className="border-b-2 border-slate-900 pb-3 text-center">
+                <div className="mb-2 flex justify-center"><Logo size={54} rounded={12} animate={false} glow={false} /></div>
                 <p className="text-[15px] font-extrabold uppercase tracking-wide">{state.settings.receiptHeader}</p>
                 <p className="mt-0.5 text-[11.5px] text-slate-500">{state.settings.address} • {state.settings.phone}</p>
                 <p className="mt-2 inline-block rounded-full bg-slate-900 px-4 py-1 text-[12px] font-extrabold uppercase tracking-widest text-white">Reçu de paiement</p>

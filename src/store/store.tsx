@@ -8,6 +8,18 @@ import { buildMutationEntries, mergeAuditEntries, newAuditEntry, pruneAudit, typ
 const STORAGE_KEY = 'gestion_locative_v1';
 export const AUTOBACKUP_KEY = 'gestion_locative_autobackup_latest';
 export const AUTOBACKUP_HISTORY_KEY = 'gestion_locative_autobackup_history';
+const DEVICE_KEY = 'gestion_locative_device';
+
+/** Identity of this computer. Kept outside AppState so a sync never overwrites it. */
+export interface DeviceInfo { id: string; name: string; lastExportAt?: string; lastImportAt?: string; lastPeerName?: string }
+
+function loadDevice(): DeviceInfo {
+  try {
+    const raw = localStorage.getItem(DEVICE_KEY);
+    if (raw) { const parsed = JSON.parse(raw) as DeviceInfo; if (parsed?.id) return parsed; }
+  } catch {}
+  return { id: uid('device'), name: 'Cet ordinateur' };
+}
 
 export const DEFAULT_SETTINGS: AppSettings = {
   landlordName: 'Bailleur Démo', company: 'SCI Les Palmiers', phone: '', email: '', address: '', currency: 'F',
@@ -50,11 +62,15 @@ interface StoreCtx {
   tenantWaterStatus: (tenantId: string) => { due: number; paid: number; rest: number; status: PaymentStatus; countPaye: number; countInc: number; countNon: number };
   contractRents: (contractId: string) => ComputedRent[]; contractWaters: (contractId: string) => ComputedWater[];
   lastSavedAt: string; triggerAutoBackup: (reason?: string) => void;
+  device: DeviceInfo; updateDevice: (patch: Partial<DeviceInfo>) => void;
+  /** Replaces the whole dataset (used after a merge) and appends one traceability entry. */
+  applyState: (next: AppState, entry: AuditInput) => void;
 }
 const Ctx = createContext<StoreCtx | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(() => loadState());
+  const [device, setDevice] = useState<DeviceInfo>(() => loadDevice());
   const [lastSavedAt, setLastSavedAt] = useState<string>(() => new Date().toISOString());
   const stateRef = useRef(state); stateRef.current = state;
   const lastAutoRef = useRef<number>(Date.now());
@@ -64,6 +80,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); setLastSavedAt(new Date().toISOString()); } catch {}
     setSoundEnabled(state.settings.soundEnabled !== false); setSoundVolume(state.settings.soundVolume ?? 0.6);
   }, [state]);
+
+  useEffect(() => { try { localStorage.setItem(DEVICE_KEY, JSON.stringify(device)); } catch {} }, [device]);
 
   // Expired journal entries are removed even if no business data changes.
   useEffect(() => {
@@ -122,6 +140,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     ...prev,
     auditLog: pruneAudit([...prev.auditLog, newAuditEntry(entry, prev.settings.landlordName)]),
   }));
+
+  const updateDevice = (patch: Partial<DeviceInfo>) => setDevice(prev => ({ ...prev, ...patch }));
+
+  /** Used after a merge: the journals were already combined by the sync engine. */
+  const applyState = (incoming: AppState, entry: AuditInput) => setState(prev => {
+    const next = withDefaults(incoming);
+    next.auditLog = pruneAudit([...mergeAuditEntries(prev.auditLog, next.auditLog), newAuditEntry(entry, prev.settings.landlordName)]);
+    return next;
+  });
 
   const reset = () => setState(prev => {
     const next = structuredClone(seedState);
@@ -191,7 +218,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return payment;
   };
 
-  const value: StoreCtx = { state, update, reset, importState, logAction, rents, waters, rentPaidMap, waterPaidMap, addPaymentWithAllocations, tenantRentStatus, tenantWaterStatus, contractRents, contractWaters, lastSavedAt, triggerAutoBackup };
+  const value: StoreCtx = { state, update, reset, importState, logAction, rents, waters, rentPaidMap, waterPaidMap, addPaymentWithAllocations, tenantRentStatus, tenantWaterStatus, contractRents, contractWaters, lastSavedAt, triggerAutoBackup, device, updateDevice, applyState };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 export function useStore(): StoreCtx { const ctx = useContext(Ctx); if (!ctx) throw new Error('useStore must be used within StoreProvider'); return ctx; }
